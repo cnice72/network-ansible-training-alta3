@@ -1,0 +1,66 @@
+To save the output of the command `show interfaces` and the switch's IP address to a file, you can modify the playbook. Below is a new task added that formats the `show interfaces` output to extract the switch's IP address and saves both to a file.
+
+Here's the updated Ansible playbook:
+
+```yaml
+---
+- name: Using cli_command agnostic modules
+  hosts: arista_switches
+  gather_facts: false
+  connection: network_cli    # required for ansible to use CLI over SSH 
+  become: yes                # run with privilege
+  become_method: enable      # use in place of "sudo"
+
+  vars:
+    ansible_ssh_pass: alta3
+
+  tasks:
+    # This task runs multiple commands on the remote nodes
+    - name: run multiple commands on remote nodes
+      ansible.netcommon.cli_command:
+        command: "{{ item }}"    # item is replaced by the next up in the list
+      loop:
+        - show version
+        - show interfaces
+      register: results     # store results of both commands in this var "results"
+
+    - name: Debug: Peek at results
+      debug:
+        var: results
+
+    - name: Debug: JSON returned to the command "show version"
+      debug:
+        var: results.results[0]
+
+    - name: Debug: JSON returned to the command "show interfaces"
+      debug:
+        var: results.results[1]
+
+    - name: Extract IP addresses from "show interfaces"
+      set_fact:
+        switch_ip: "{{ item.ip }}"
+      loop: "{{ results.results[1].stdout_lines }}"
+      when: "item is search('ip address')"
+      loop_control:
+        label: "Checking line"
+
+    - name: Save outputs to a file
+      copy:
+        content: |
+          Show Interfaces Output:
+          {{ results.results[1].stdout }}
+
+          Switch IP Address:
+          {{ switch_ip }}
+        dest: /path/to/save/switch_output.txt
+```
+
+### Explanation:
+
+1. **Extracting IP Addresses:**
+   - The `set_fact` task is used to loop through the `stdout_lines` of the `show interfaces` command output and search for lines containing IP addresses using the condition stated in the `when` clause (you might need to adjust how you extract IP based on your device output format).
+
+2. **Saving Output to a File:**
+   - A `copy` task is used to save both the output of `show interfaces` and the extracted switch IP address to a file at a specified path (`/path/to/save/switch_output.txt`). You need to replace `/path/to/save/switch_output.txt` with the actual file path where you want to save the output.
+
+Please remember to ensure that the `ansible.netcommon` and its dependencies are installed for this playbook to run successfully, and that the conditions in the loop correctly find the IP based on your switch's output format. Adjust the extraction logic as required based on actual outputs you observe.
